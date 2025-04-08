@@ -20,6 +20,7 @@ export function ChatInput({
 }: ChatInputProps) {
   const [message, setMessage] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [localDisabled, setLocalDisabled] = useState(false);
   
   // Auto-resize textarea as user types
   useEffect(() => {
@@ -37,20 +38,29 @@ export function ChatInput({
     }
   }, [message]);
   
-  // Send typing indicator
+  // Determine if the input should be disabled
+  // For customer chat, we only disable if the session is ended, not based on connection status
   useEffect(() => {
-    if (message.length > 0) {
+    // We don't want to disable based on connection status alone
+    setLocalDisabled(disabled);
+  }, [disabled]);
+  
+  // Send typing indicator - only when connected
+  useEffect(() => {
+    if (message.length > 0 && connectionStatus.connected) {
       onTyping(true);
     } else {
       onTyping(false);
     }
-  }, [message, onTyping]);
+  }, [message, onTyping, connectionStatus.connected]);
   
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
     
-    if (!message.trim() || disabled) return;
+    if (!message.trim() || localDisabled) return;
     
+    // Attempt to send message even if connection appears down
+    // The send function will queue it if needed
     onSendMessage(message.trim());
     setMessage("");
     
@@ -59,10 +69,6 @@ export function ChatInput({
       textareaRef.current.style.height = 'auto';
     }
   };
-  
-  // For customer chat, we never want to disable the text input based on connection status
-  // We'll only disable it if the session is ended or doesn't exist
-  const isInputDisabled = disabled;
   
   return (
     <div className="p-4 border-t border-gray-200 bg-white">
@@ -77,7 +83,7 @@ export function ChatInput({
             className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent resize-none text-sm"
             placeholder="Type your message..."
             rows={1}
-            disabled={isInputDisabled}
+            disabled={localDisabled}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
@@ -86,10 +92,10 @@ export function ChatInput({
             }}
           />
           <div className="absolute bottom-2 right-2 flex space-x-1">
-            <Button type="button" variant="ghost" size="icon" disabled={isInputDisabled}>
+            <Button type="button" variant="ghost" size="icon" disabled={localDisabled}>
               <Paperclip className="h-5 w-5 text-textMedium" />
             </Button>
-            <Button type="button" variant="ghost" size="icon" disabled={isInputDisabled}>
+            <Button type="button" variant="ghost" size="icon" disabled={localDisabled}>
               <Smile className="h-5 w-5 text-textMedium" />
             </Button>
           </div>
@@ -97,7 +103,7 @@ export function ChatInput({
         <Button 
           type="submit" 
           className="bg-primary text-white rounded-full w-10 h-10 flex items-center justify-center flex-shrink-0 hover:bg-blue-700 transition"
-          disabled={!message.trim() || isInputDisabled}
+          disabled={!message.trim() || localDisabled}
         >
           <Send className="h-5 w-5" />
         </Button>

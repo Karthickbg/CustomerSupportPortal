@@ -16,16 +16,15 @@ export default function CustomerChat() {
   const role = "customer";
   
   const [showInfo, setShowInfo] = useState(false);
-  const [isConnecting, setIsConnecting] = useState(false);
-  const [manualConnectAttempted, setManualConnectAttempted] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(true); // Start as connecting
+  const [forceReconnect, setForceReconnect] = useState(0); // Counter to force reconnection
   
   // If user is logged in as an agent, redirect them to the agent interface
   if (user && user.role === "agent") {
     return <Redirect to="/agent" />;
   }
   
-  // We'll use autoConnect: false to prevent immediate connection attempts
-  // which might fail and show errors to the user
+  // Always use autoConnect: true for customer interface for reliability
   const {
     connectionStatus,
     activeSession,
@@ -37,36 +36,34 @@ export default function CustomerChat() {
   } = useChat({
     userId,
     role,
-    autoConnect: false, // Don't connect automatically
+    autoConnect: true, // Always connect automatically
   });
   
-  // After page loads and renders, try to connect but don't show errors immediately
+  // Log connection status and reconnect if needed
   useEffect(() => {
-    if (!manualConnectAttempted) {
-      setIsConnecting(true);
+    console.log("Customer chat connection status:", {
+      connected: connectionStatus.connected,
+      reconnecting: connectionStatus.reconnecting,
+      error: connectionStatus.error,
+      hasActiveSession: activeSession !== null
+    });
+    
+    // If connection is lost, and we have no active session, try to reconnect
+    if (!connectionStatus.connected && !connectionStatus.reconnecting && !activeSession) {
+      // We'll wait 3 seconds between reconnection attempts
+      const reconnectTimer = setTimeout(() => {
+        console.log("Attempting to reconnect customer chat...");
+        connect();
+        setForceReconnect(prev => prev + 1); // Increment to force effect to run again
+      }, 3000);
       
-      // Delay the connection attempt slightly to ensure page has fully loaded
-      const timer = setTimeout(() => {
-        try {
-          // Try to connect to the websocket server
-          console.log("Attempting customer chat WebSocket connection...");
-          connect();
-          console.log("Connection attempt initiated");
-        } catch (error) {
-          console.error("Error during connection attempt:", error);
-        }
-        
-        setManualConnectAttempted(true);
-        
-        // Wait a bit before showing any potential connection errors
-        setTimeout(() => {
-          setIsConnecting(false);
-        }, 2000);
-      }, 500);
-      
-      return () => clearTimeout(timer);
+      return () => clearTimeout(reconnectTimer);
     }
-  }, [connect, manualConnectAttempted]);
+    
+    // Update connection state for UI
+    setIsConnecting(!connectionStatus.connected);
+    
+  }, [connectionStatus, connect, activeSession, forceReconnect]);
   
   const { data: userData, isLoading } = useQuery({
     queryKey: [`/api/users/${userId}`],
