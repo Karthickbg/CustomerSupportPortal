@@ -141,24 +141,25 @@ export function useChat({ userId, role, autoConnect = true }: UseChatOptions): U
   const processChatMessage = useCallback((messageData: any) => {
     const { message, session } = messageData;
     
-    // Store sender information if not already stored
-    if (message && message.senderId && !userDetails.current.has(message.senderId)) {
-      apiRequest('GET', `/api/users/${message.senderId}`)
-        .then(res => res.json())
-        .then(user => {
-          userDetails.current.set(user.id, user);
-          
-          // Update the message with user info
-          setMessages(prev => prev.map(msg => 
-            msg.id === message.id 
-              ? { ...msg, user } 
-              : msg
-          ));
-        })
-        .catch(console.error);
+    if (!message || !session) {
+      console.error("Received invalid chat message data", messageData);
+      return;
     }
     
-    // Add message to the list
+    // For customer role, show messages in either:
+    // 1. Their active session, or
+    // 2. A session where they are the customer (even if not active yet)
+    // For agent role, show messages in active sessions they're assigned to
+    const shouldShowMessage = 
+      (role === 'customer' && (
+        activeSession?.id === session.id || 
+        session.customerId === userId
+      )) ||
+      (role === 'agent' && (
+        session.agentId === userId || 
+        activeSession?.id === session.id
+      ));
+      
     console.log("Processing chat message:", {
       messageId: message?.id,
       senderId: message?.senderId,
@@ -167,29 +168,65 @@ export function useChat({ userId, role, autoConnect = true }: UseChatOptions): U
       userId,
       activeSessionId: activeSession?.id,
       agentId: session?.agentId,
-      showCondition: message && session && (
-        (role === 'customer' && session.customerId === userId) ||
-        (role === 'agent' && (session.agentId === userId || activeSession?.id === session.id))
-      )
+      showCondition: shouldShowMessage
     });
     
-    if (message && session && (
-        (role === 'customer' && session.customerId === userId) ||
-        (role === 'agent' && (session.agentId === userId || activeSession?.id === session.id))
-    )) {
-      setMessages(prev => [
-        ...prev, 
-        { 
-          ...message, 
-          user: userDetails.current.get(message.senderId)
-        }
-      ]);
+    // Store sender information if not already stored
+    if (message.senderId && !userDetails.current.has(message.senderId)) {
+      // For customers with temporary IDs (negative values), we don't need to fetch user details
+      if (message.senderId < 0) {
+        userDetails.current.set(message.senderId, {
+          id: message.senderId,
+          username: "Customer",
+          role: "customer",
+          // Add required fields for User type
+          password: "",
+          displayName: "Anonymous Customer",
+          email: "",
+          phone: null,
+          status: "online",
+          avatarInitials: "AC",
+          createdAt: new Date()
+        } as User);
+      } else {
+        apiRequest('GET', `/api/users/${message.senderId}`)
+          .then(res => res.json())
+          .then(user => {
+            if (user && user.id) {
+              userDetails.current.set(user.id, user);
+            }
+          })
+          .catch(err => console.error("Error fetching user details:", err));
+      }
+    }
+    
+    // Add message to the list if it should be shown for this user
+    if (shouldShowMessage) {
+      // Make sure we don't duplicate messages
+      setMessages(prev => {
+        // Check if this message already exists
+        const exists = prev.some(m => m.id === message.id);
+        if (exists) return prev;
+        
+        return [
+          ...prev,
+          {
+            ...message,
+            user: userDetails.current.get(message.senderId)
+          }
+        ];
+      });
       
       // Reset typing indicator
       setIsTyping(prev => ({
         ...prev,
         [session.id]: false
       }));
+      
+      // If this is a customer receiving a message from an agent, update the active session
+      if (role === 'customer' && message.senderId !== userId) {
+        setActiveSession(session);
+      }
     }
     
     // Update session in list if needed
