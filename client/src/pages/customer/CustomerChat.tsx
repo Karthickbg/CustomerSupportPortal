@@ -1,16 +1,29 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useChat } from "@/hooks/useChat";
 import { ChatInterface } from "@/components/chat/ChatInterface";
 import { useQuery } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAuth } from "@/hooks/useAuth";
+import { Redirect } from "wouter";
 
 export default function CustomerChat() {
-  // In a real app, you'd get the customer ID from authentication
-  // For demo purposes, we're using customer ID 3 (John Doe from sample data)
-  const userId = 3;
+  const { user } = useAuth();
+  
+  // Use the logged-in user's ID or redirect to login
+  const userId = user?.id || 0;
   const role = "customer";
   
   const [showInfo, setShowInfo] = useState(false);
+  
+  // If not logged in or not a customer, redirect to auth page
+  if (!user) {
+    return <Redirect to="/auth" />;
+  }
+  
+  // Only customers should access this page
+  if (user.role !== "customer") {
+    return <Redirect to="/agent" />;
+  }
   
   const {
     connectionStatus,

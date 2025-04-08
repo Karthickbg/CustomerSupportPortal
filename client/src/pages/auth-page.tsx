@@ -16,10 +16,14 @@ export default function AuthPage() {
   const { toast } = useToast();
   const [, navigate] = useLocation();
 
-  // If user is already logged in as an agent, redirect to agent dashboard
+  // If user is already logged in, redirect to the appropriate dashboard
   useEffect(() => {
-    if (user && user.role === 'agent') {
-      navigate("/agent");
+    if (user) {
+      if (user.role === 'agent') {
+        navigate("/agent");
+      } else if (user.role === 'customer') {
+        navigate("/");
+      }
     }
   }, [user, navigate]);
 
@@ -37,20 +41,30 @@ export default function AuthPage() {
     
     if (tab === "login") {
       const success = await login(username, password);
-      if (success) {
-        navigate("/agent");
+      if (success && user) {
+        // Redirect based on user role
+        if (user.role === 'agent') {
+          navigate("/agent");
+        } else if (user.role === 'customer') {
+          navigate("/");
+        }
       }
     } else {
       toast({
         title: "Registration not implemented",
-        description: "Please use one of the existing agent accounts: sarah_agent, alex_agent, or michael_agent. All have password: password123",
+        description: "Please use one of the existing accounts:\n\nAgents: sarah_agent, alex_agent, michael_agent\nCustomers: john_customer, emily_customer\n\nAll have password: password123",
         variant: "destructive",
       });
     }
   };
 
-  if (user && user.role === 'agent') {
-    return <Redirect to="/agent" />;
+  // If already logged in, redirect to the appropriate page
+  if (user) {
+    if (user.role === 'agent') {
+      return <Redirect to="/agent" />;
+    } else if (user.role === 'customer') {
+      return <Redirect to="/" />;
+    }
   }
 
   return (
@@ -94,10 +108,10 @@ export default function AuthPage() {
         <Card className="w-full max-w-md mx-auto shadow-lg">
           <CardHeader className="space-y-2">
             <CardTitle className="text-2xl font-bold text-center">
-              Agent Login
+              Chat Platform Login
             </CardTitle>
             <CardDescription className="text-center">
-              Sign in to your agent account to manage customer chats
+              Sign in to access the customer service chat platform
             </CardDescription>
           </CardHeader>
           <div className="w-full">
@@ -160,12 +174,20 @@ export default function AuthPage() {
               <CardContent className="pt-4 text-center text-muted-foreground">
                 <p>
                   Registration is disabled in this demo.<br />
-                  Please use one of the existing agent accounts:
+                  Please use one of the existing accounts:
                 </p>
                 <div className="mt-4 p-3 bg-muted rounded-md">
+                  <p className="font-mono text-sm mb-2">
+                    <strong>Agents:</strong><br />
+                    sarah_agent, alex_agent, michael_agent
+                  </p>
+                  <p className="font-mono text-sm mb-2">
+                    <strong>Customers:</strong><br />
+                    john_customer, emily_customer
+                  </p>
                   <p className="font-mono text-sm">
-                    Username: sarah_agent, alex_agent, or michael_agent<br />
-                    Password: password123
+                    <strong>Password for all accounts:</strong><br />
+                    password123
                   </p>
                 </div>
               </CardContent>

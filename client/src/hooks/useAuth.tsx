@@ -52,10 +52,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         throw new Error('Invalid password');
       }
 
-      // Only allow agents to log in to the agent dashboard
-      if (foundUser.role !== 'agent') {
-        throw new Error('Only agents can log in to the agent dashboard');
-      }
+      // We now allow both agents and customers to log in
+      // The routing will handle directing them to the appropriate interface
       
       // Store the user in local storage
       localStorage.setItem('currentUser', JSON.stringify(foundUser));
