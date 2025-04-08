@@ -9,19 +9,15 @@ import { Redirect } from "wouter";
 export default function CustomerChat() {
   const { user } = useAuth();
   
-  // Use the logged-in user's ID or redirect to login
-  const userId = user?.id || 0;
+  // For customers, we'll use a hardcoded ID (3 for John Doe) if not logged in
+  // In a real app, you'd handle this differently, perhaps with a session ID
+  const userId = 3; // John Doe customer ID
   const role = "customer";
   
   const [showInfo, setShowInfo] = useState(false);
   
-  // If not logged in or not a customer, redirect to auth page
-  if (!user) {
-    return <Redirect to="/auth" />;
-  }
-  
-  // Only customers should access this page
-  if (user.role !== "customer") {
+  // If user is logged in as an agent, redirect them to the agent interface
+  if (user && user.role === "agent") {
     return <Redirect to="/agent" />;
   }
   

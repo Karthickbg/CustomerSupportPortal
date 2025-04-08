@@ -18,7 +18,7 @@ function RouterContent() {
         if (user && user.role === 'agent') {
           return <Redirect to="/agent" />;
         }
-        // Otherwise show customer chat
+        // Show customer chat without requiring login
         return <CustomerChat />;
       }} />
       <ProtectedRoute path="/agent">
