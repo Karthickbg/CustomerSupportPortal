@@ -18,10 +18,45 @@ class WebSocketClient {
    * Connect to the WebSocket server with improved reliability
    */
   connect(userId: number, role: string): void {
+    console.log(`Attempting to connect as ${role} with userId: ${userId}`);
+    
+    // For anonymous customers, check localStorage to see if we have a temporary ID
+    if (userId === 0 && role === 'customer') {
+      // Try to use a stored anonymous ID if we have one to maintain session continuity
+      const storedAnonymousId = localStorage.getItem('anonymousCustomerId');
+      if (storedAnonymousId) {
+        const parsedId = parseInt(storedAnonymousId, 10);
+        if (!isNaN(parsedId) && parsedId < 0) {
+          // Use the stored ID for reconnection
+          userId = parsedId;
+          console.log(`Using stored anonymous ID: ${userId} for continuity`);
+        }
+      }
+    }
+    
     // Only attempt to connect if we're not already connecting or connected
-    if (this.socket && (this.socket.readyState === WebSocket.OPEN || this.socket.readyState === WebSocket.CONNECTING)) {
-      console.log("Already connecting or connected, skipping new connection attempt");
-      return;
+    if (this.socket) {
+      const state = this.socket.readyState;
+      
+      if (state === WebSocket.OPEN) {
+        console.log("WebSocket is already connected, notifying handlers");
+        this.notifyConnectionHandlers(true);
+        return;
+      }
+      
+      if (state === WebSocket.CONNECTING) {
+        console.log("WebSocket is already connecting, waiting for result");
+        return;
+      }
+      
+      // Socket is closing or closed, dispose of it and continue
+      try {
+        console.log("Cleaning up existing socket before reconnecting");
+        this.socket.close();
+      } catch (e) {
+        console.warn("Error closing existing socket:", e);
+      }
+      this.socket = null;
     }
 
     // Cancel any pending reconnects
@@ -34,41 +69,26 @@ class WebSocketClient {
     this.role = role;
     this.intentionalClose = false;
 
-    // Close any existing socket before creating a new one
-    if (this.socket) {
-      try {
-        this.socket.close();
-      } catch (e) {
-        console.log("Error closing existing socket:", e);
-      }
-      this.socket = null;
-    }
-
     try {
       // Add timestamp to URL to avoid potential caching issues with WebSocket connections
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const timestamp = Date.now();
-      // Use 0 for the userId param when dealing with anonymous customers
-      const userIdParam = userId || 0;
-      
-      // Make sure we have a valid host - if window.location.host is empty, use default hostname and port
-      const host = window.location.host || window.location.hostname || 'localhost';
       
       // Construct the WebSocket URL
-      const wsUrl = `${protocol}//${host}/ws?userId=${userIdParam}&role=${role}&t=${timestamp}`;
+      const host = window.location.host || window.location.hostname || 'localhost';
+      const wsUrl = `${protocol}//${host}/ws?userId=${userId}&role=${role}&t=${timestamp}`;
       
-      // Create the WebSocket connection directly
-      console.log(`Connecting to WebSocket at ${wsUrl}`);
+      console.log(`Creating WebSocket connection to ${wsUrl}`);
       this.socket = new WebSocket(wsUrl);
 
-      // Shorter timeout (5 seconds instead of 8) for faster retries
+      // Connection timeout to prevent hanging in CONNECTING state
       const connectionTimeout = setTimeout(() => {
         if (this.socket && this.socket.readyState === WebSocket.CONNECTING) {
-          console.log("WebSocket connection timeout after 5 seconds - retrying");
+          console.error("WebSocket connection timeout after 5 seconds");
           try {
             this.socket.close();
           } catch (e) {
-            console.error("Error closing socket on timeout:", e);
+            console.error("Error closing timed out socket:", e);
           }
           this.socket = null;
           this.notifyConnectionHandlers(false);
@@ -86,7 +106,7 @@ class WebSocketClient {
             try {
               // Send a lightweight ping message
               this.socket.send(JSON.stringify({
-                type: "ping",
+                type: messageTypes.PING,
                 data: { timestamp: Date.now() },
                 timestamp: Date.now()
               }));
@@ -218,6 +238,23 @@ class WebSocketClient {
   private handleMessage = (event: MessageEvent) => {
     try {
       const message = JSON.parse(event.data) as WebSocketMessage;
+      
+      // For anonymous customers, store the assigned ID when it's sent in CONNECTION_ESTABLISHED
+      if (message.type === 'connection_established' && this.role === 'customer') {
+        const assignedUserId = message.data?.userId;
+        if (assignedUserId && assignedUserId < 0) {
+          // Store the temporary ID for reconnection
+          console.log(`Storing anonymous customer ID: ${assignedUserId} for reconnection`);
+          localStorage.setItem('anonymousCustomerId', assignedUserId.toString());
+        }
+      }
+      
+      // Handle pong responses to reset connection timeout timers if needed
+      if (message.type === messageTypes.PONG) {
+        console.log("Received pong response from server");
+        // This message just confirms the server connection is alive
+        // No specific action needed beyond the normal message handlers
+      }
       
       // Notify all handlers for this message type
       const handlers = this.messageHandlers.get(message.type);

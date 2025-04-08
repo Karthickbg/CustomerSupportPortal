@@ -9,10 +9,22 @@ import { Redirect } from "wouter";
 export default function CustomerChat() {
   const { user } = useAuth();
   
-  // Allow anonymous customer access (userId will be assigned temporarily by the server)
-  // If user is logged in, we'll use their ID
-  // We'll pass 0 when not authenticated, and server will assign a temporary ID
-  const userId = user?.id || 0; 
+  // For anonymous customers, check if we have a stored ID from a previous session
+  let initialUserId = user?.id || 0; 
+  
+  // Try to use a stored temporary ID for reconnection if we're not logged in
+  if (!user) {
+    const storedId = localStorage.getItem('anonymousCustomerId');
+    if (storedId) {
+      const parsedId = parseInt(storedId, 10);
+      if (!isNaN(parsedId) && parsedId < 0) {
+        initialUserId = parsedId;
+        console.log(`Using stored anonymous ID: ${initialUserId} for connection`);
+      }
+    }
+  }
+  
+  const userId = initialUserId;
   const role = "customer";
   
   const [showInfo, setShowInfo] = useState(false);
