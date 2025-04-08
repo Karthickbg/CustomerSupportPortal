@@ -8,6 +8,7 @@ export interface IStorage {
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   updateUserStatus(userId: number, status: string): Promise<User | undefined>;
+  getAllUsers(): User[];
   
   // Chat sessions
   createChatSession(session: InsertChatSession): Promise<ChatSession>;
@@ -62,7 +63,10 @@ export class MemStorage implements IStorage {
       ...insertUser,
       id,
       createdAt: now,
-      status: "offline"
+      status: "offline",
+      role: insertUser.role || "customer", // Ensure role is always defined
+      phone: insertUser.phone || null,
+      avatarInitials: insertUser.avatarInitials || null
     };
     this.users.set(id, user);
     return user;
@@ -77,6 +81,10 @@ export class MemStorage implements IStorage {
     return updatedUser;
   }
   
+  getAllUsers(): User[] {
+    return Array.from(this.users.values());
+  }
+  
   // Chat session methods
   async createChatSession(session: InsertChatSession): Promise<ChatSession> {
     const id = this.currentSessionId++;
@@ -85,7 +93,9 @@ export class MemStorage implements IStorage {
       ...session,
       id,
       startedAt: now,
-      endedAt: null
+      endedAt: null,
+      status: session.status || "waiting",
+      agentId: session.agentId || null
     };
     this.chatSessions.set(id, chatSession);
     return chatSession;

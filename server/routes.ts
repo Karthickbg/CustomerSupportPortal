@@ -28,6 +28,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
+  app.get("/api/users", async (_req, res) => {
+    try {
+      // This is a simplified implementation for demo purposes
+      // In a real app, you'd want to paginate and filter this endpoint
+      const users = Array.from(storage.getAllUsers());
+      res.json(users);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to get users" });
+    }
+  });
+  
   app.get("/api/users/:id", async (req, res) => {
     try {
       const id = parseInt(req.params.id);

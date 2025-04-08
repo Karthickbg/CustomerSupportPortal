@@ -3,12 +3,18 @@ import { Toaster } from "@/components/ui/toaster";
 import NotFound from "@/pages/not-found";
 import CustomerChat from "@/pages/customer/CustomerChat";
 import AgentDashboard from "@/pages/agent/AgentDashboard";
+import AuthPage from "@/pages/auth-page";
+import { ProtectedRoute } from "@/lib/protected-route";
+import { AuthProvider } from "@/hooks/useAuth";
 
 function Router() {
   return (
     <Switch>
       <Route path="/" component={CustomerChat} />
-      <Route path="/agent" component={AgentDashboard} />
+      <ProtectedRoute path="/agent">
+        <AgentDashboard />
+      </ProtectedRoute>
+      <Route path="/auth" component={AuthPage} />
       <Route component={NotFound} />
     </Switch>
   );
@@ -16,10 +22,10 @@ function Router() {
 
 function App() {
   return (
-    <>
+    <AuthProvider>
       <Router />
       <Toaster />
-    </>
+    </AuthProvider>
   );
 }
 

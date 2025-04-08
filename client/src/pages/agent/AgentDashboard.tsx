@@ -5,11 +5,15 @@ import { ChatInterface } from "@/components/chat/ChatInterface";
 import { CustomerInfoSidebar } from "@/components/customer/CustomerInfoSidebar";
 import { useQuery } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAuth } from "@/hooks/useAuth";
+import { Button } from "@/components/ui/button";
+import { LogOut } from "lucide-react";
+import { useLocation } from "wouter";
 
 export default function AgentDashboard() {
-  // In a real app, you'd get the agent ID from authentication
-  // For demo purposes, we're using agent ID 1 (Sarah Williams from sample data)
-  const userId = 1;
+  const { user, logout } = useAuth();
+  const [, navigate] = useLocation();
+  const userId = user?.id || 0;
   const role = "agent";
   
   const [showSidebar, setShowSidebar] = useState(false);
@@ -33,10 +37,8 @@ export default function AgentDashboard() {
     autoConnect: true,
   });
   
-  const { data: userData, isLoading } = useQuery({
-    queryKey: [`/api/users/${userId}`],
-    enabled: !!userId,
-  });
+  // We're using the user data from AuthContext instead of making a separate query
+  const isLoading = false;
   
   const handleSendMessage = (content: string) => {
     sendMessage(content);
@@ -75,8 +77,8 @@ export default function AgentDashboard() {
   return (
     <div className="flex flex-col md:flex-row h-screen">
       <AgentInterface
-        agentName={userData?.displayName || "Support Agent"}
-        avatarInitials={userData?.avatarInitials || "SA"}
+        agentName={user?.displayName || "Support Agent"}
+        avatarInitials={user?.avatarInitials || "SA"}
         isOnline={connectionStatus.connected}
         activeSessions={activeSessions}
         waitingSessions={waitingSessions}
