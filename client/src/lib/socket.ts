@@ -50,10 +50,43 @@ class WebSocketClient {
       const timestamp = Date.now();
       // Use 0 for the userId param when dealing with anonymous customers
       const userIdParam = userId || 0;
-      const wsUrl = `${protocol}//${window.location.host}/ws?userId=${userIdParam}&role=${role}&t=${timestamp}`;
       
-      console.log(`Connecting to WebSocket at ${wsUrl}`);
-      this.socket = new WebSocket(wsUrl);
+      // Make sure we have a valid host - if window.location.host is empty, use default hostname and port
+      const host = window.location.host || window.location.hostname || 'localhost';
+      
+      // Construct the WebSocket URL
+      const wsUrl = `${protocol}//${host}/ws?userId=${userIdParam}&role=${role}&t=${timestamp}`;
+      
+      // Detect and prevent connection to unwanted URLs (like the one with token parameter)
+      if (window.WebSocket) {
+        // Replace any existing WebSocket prototype connect to prevent unintended connections
+        const originalWebSocketConstructor = window.WebSocket;
+        
+        class SafeWebSocket extends originalWebSocketConstructor {
+          constructor(url: string, protocols?: string | string[]) {
+            // Check if URL contains 'token=' which is not part of our intended connection
+            if (url.includes('token=')) {
+              console.error(`Blocking unintended WebSocket connection to: ${url}`);
+              // Use our intended URL instead
+              super(wsUrl, protocols);
+            } else {
+              super(url, protocols);
+            }
+          }
+        }
+        
+        // Only temporarily replace the WebSocket constructor to catch potential issues
+        window.WebSocket = SafeWebSocket as any;
+        
+        console.log(`Connecting to WebSocket at ${wsUrl}`);
+        this.socket = new WebSocket(wsUrl);
+        
+        // Restore the original WebSocket constructor
+        window.WebSocket = originalWebSocketConstructor;
+      } else {
+        console.log(`Connecting to WebSocket at ${wsUrl}`);
+        this.socket = new WebSocket(wsUrl);
+      }
 
       // Shorter timeout (5 seconds instead of 8) for faster retries
       const connectionTimeout = setTimeout(() => {
@@ -263,7 +296,26 @@ class WebSocketClient {
         this.intentionalClose || 
         !this.role || 
         (this.role === 'agent' && !this.userId)) {
+      console.log("Skipping reconnection attempt due to:", {
+        alreadyReconnecting: !!this.reconnectTimeout,
+        intentionalClose: this.intentionalClose,
+        missingRole: !this.role,
+        missingAgentId: this.role === 'agent' && !this.userId
+      });
       return;
+    }
+
+    // Check if there's any conflicting global variable or localStorage item 
+    // that might be interfering with the WebSocket connection
+    try {
+      // Clean up any potential conflicting localStorage items
+      if (localStorage.getItem('wsUrl') || localStorage.getItem('websocket')) {
+        console.log("Cleaning up potentially conflicting localStorage WebSocket items");
+        localStorage.removeItem('wsUrl');
+        localStorage.removeItem('websocket');
+      }
+    } catch (e) {
+      console.error("Error checking localStorage:", e);
     }
 
     // Set up progressive backoff for reconnection attempts

@@ -44,9 +44,18 @@ export default function CustomerChat() {
   useEffect(() => {
     if (!manualConnectAttempted) {
       setIsConnecting(true);
+      
       // Delay the connection attempt slightly to ensure page has fully loaded
       const timer = setTimeout(() => {
-        connect();
+        try {
+          // Try to connect to the websocket server
+          console.log("Attempting customer chat WebSocket connection...");
+          connect();
+          console.log("Connection attempt initiated");
+        } catch (error) {
+          console.error("Error during connection attempt:", error);
+        }
+        
         setManualConnectAttempted(true);
         
         // Wait a bit before showing any potential connection errors
