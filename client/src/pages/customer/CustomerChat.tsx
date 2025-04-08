@@ -9,9 +9,10 @@ import { Redirect } from "wouter";
 export default function CustomerChat() {
   const { user } = useAuth();
   
-  // For customers, we'll use a hardcoded ID (3 for John Doe) if not logged in
-  // In a real app, you'd handle this differently, perhaps with a session ID
-  const userId = 3; // John Doe customer ID
+  // Allow anonymous customer access (userId will be assigned temporarily by the server)
+  // If user is logged in, we'll use their ID
+  // We'll pass 0 when not authenticated, and server will assign a temporary ID
+  const userId = user?.id || 0; 
   const role = "customer";
   
   const [showInfo, setShowInfo] = useState(false);

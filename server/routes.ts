@@ -200,7 +200,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     
     // Parse user ID and role from query string
     const url = new URL(request.url || '', `http://${request.headers.host}`);
-    const userId = parseInt(url.searchParams.get('userId') || '0');
+    let userId = parseInt(url.searchParams.get('userId') || '0');
     const role = url.searchParams.get('role') || '';
     
     // Store user data on the socket for later reference
@@ -209,15 +209,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
     // Log connection for debugging
     console.log(`WebSocket connection established: User ${userId} (${role})`);
     
-    if (!userId || !['customer', 'agent'].includes(role)) {
-      console.log(`Invalid connection attempt: User ${userId} (${role})`);
+    // Only validate agent connections - customers can connect without authentication
+    if (role === 'agent' && !userId) {
+      console.log(`Invalid agent connection attempt without userId: ${userId}`);
       socket.send(JSON.stringify({
         type: messageTypes.ERROR,
-        data: { message: "Invalid user ID or role" },
+        data: { message: "Agent ID is required" },
         timestamp: Date.now(),
       }));
       socket.close();
       return;
+    }
+    
+    // Make sure role is either 'customer' or 'agent'
+    if (!['customer', 'agent'].includes(role)) {
+      console.log(`Invalid role: ${role}`);
+      socket.send(JSON.stringify({
+        type: messageTypes.ERROR,
+        data: { message: "Invalid role, must be 'customer' or 'agent'" },
+        timestamp: Date.now(),
+      }));
+      socket.close();
+      return;
+    }
+    
+    // For customers without a userId, assign a temporary anonymous ID
+    if (role === 'customer' && !userId) {
+      // Generate a temporary negative ID for anonymous users
+      const tempId = -(Date.now() % 100000);
+      console.log(`Assigning temporary ID ${tempId} to anonymous customer`);
+      userId = tempId;
+      extSocket.userData = { userId, role };
     }
     
     // Update user status to online

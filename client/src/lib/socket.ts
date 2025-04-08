@@ -48,7 +48,9 @@ class WebSocketClient {
       // Add timestamp to URL to avoid potential caching issues with WebSocket connections
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const timestamp = Date.now();
-      const wsUrl = `${protocol}//${window.location.host}/ws?userId=${userId}&role=${role}&t=${timestamp}`;
+      // Use 0 for the userId param when dealing with anonymous customers
+      const userIdParam = userId || 0;
+      const wsUrl = `${protocol}//${window.location.host}/ws?userId=${userIdParam}&role=${role}&t=${timestamp}`;
       
       console.log(`Connecting to WebSocket at ${wsUrl}`);
       this.socket = new WebSocket(wsUrl);
@@ -255,8 +257,12 @@ class WebSocketClient {
     // Don't attempt to reconnect if:
     // 1. We're already in the process of reconnecting
     // 2. The user explicitly disconnected
-    // 3. We don't have user information to reconnect with
-    if (this.reconnectTimeout || this.intentionalClose || !this.userId || !this.role) {
+    // 3. We don't have role information
+    // 4. We need userId for agent role but don't have it
+    if (this.reconnectTimeout || 
+        this.intentionalClose || 
+        !this.role || 
+        (this.role === 'agent' && !this.userId)) {
       return;
     }
 

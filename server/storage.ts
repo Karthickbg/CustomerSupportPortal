@@ -73,8 +73,19 @@ export class MemStorage implements IStorage {
   }
   
   async updateUserStatus(userId: number, status: string): Promise<User | undefined> {
+    // Skip status updates for anonymous users (negative IDs)
+    if (userId < 0) {
+      return undefined;
+    }
+    
     const user = this.users.get(userId);
-    if (!user) return undefined;
+    if (!user) {
+      // For customer connections without a matching user, ignore silently
+      if (userId === 0) {
+        return undefined;
+      }
+      return undefined;
+    }
     
     const updatedUser = { ...user, status };
     this.users.set(userId, updatedUser);
@@ -106,6 +117,13 @@ export class MemStorage implements IStorage {
   }
   
   async getChatSessionsByCustomerId(customerId: number): Promise<ChatSession[]> {
+    // If customerId is 0 or negative (anonymous user), return an empty array
+    // This will trigger creation of a new session
+    if (customerId <= 0) {
+      console.log(`No existing sessions for anonymous customer ID: ${customerId}`);
+      return [];
+    }
+    
     return Array.from(this.chatSessions.values()).filter(
       (session) => session.customerId === customerId
     );

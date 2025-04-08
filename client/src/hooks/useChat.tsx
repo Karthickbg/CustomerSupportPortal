@@ -8,7 +8,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { debounce } from '@/lib/utils';
 
 interface UseChatOptions {
-  userId: number;
+  userId: number | 0; // Allow 0 as default for anonymous customers
   role: 'customer' | 'agent';
   autoConnect?: boolean;
 }
@@ -102,7 +102,8 @@ export function useChat({ userId, role, autoConnect = true }: UseChatOptions): U
   
   // Auto-connect on mount if enabled
   useEffect(() => {
-    if (autoConnect && userId && role) {
+    // For customers, allow connection even with userId=0 (anonymous)
+    if (autoConnect && (userId || role === 'customer') && role) {
       connect();
     }
     

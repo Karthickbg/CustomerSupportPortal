@@ -35,10 +35,17 @@ export const handleConnection = (socket: WebSocket, userId: number, role: string
 // Handle when a customer connects
 const handleCustomerConnection = async (userId: number, socket: WebSocket) => {
   try {
+    console.log(`Handling customer connection for ${userId} (${userId <= 0 ? 'anonymous' : 'registered'})`);
+    
     // Check if customer has any active sessions
     const customerSessions = await storage.getChatSessionsByCustomerId(userId);
     
     if (customerSessions.length === 0) {
+      // For anonymous users (userId <= 0), we'll still create a session but log it
+      if (userId <= 0) {
+        console.log(`Creating new session for anonymous customer with temp ID: ${userId}`);
+      }
+      
       // Create a new chat session
       const sessionData: InsertChatSession = {
         customerId: userId,
@@ -46,6 +53,8 @@ const handleCustomerConnection = async (userId: number, socket: WebSocket) => {
       };
       
       const session = await storage.createChatSession(sessionData);
+      console.log(`Created new session #${session.id} for customer ${userId}`);
+      
       sessions.set(session.id, session);
       
       if (!userSessions.has(userId)) {
@@ -73,6 +82,7 @@ const handleCustomerConnection = async (userId: number, socket: WebSocket) => {
       // Send existing session data and chat history
       const activeSession = customerSessions.find(s => s.status !== "ended");
       if (activeSession) {
+        console.log(`Found active session #${activeSession.id} for customer ${userId}`);
         const messages = await storage.getMessagesBySessionId(activeSession.id);
         
         sendMessage(socket, {
@@ -95,6 +105,7 @@ const handleCustomerConnection = async (userId: number, socket: WebSocket) => {
           userSessions.get(userId)?.push(activeSession.id);
         }
       } else {
+        console.log(`No active sessions for customer ${userId}, creating new one`);
         // Create a new session if all previous ones are ended
         const sessionData: InsertChatSession = {
           customerId: userId,
