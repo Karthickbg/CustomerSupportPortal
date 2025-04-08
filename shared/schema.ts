@@ -73,6 +73,7 @@ export const messageTypes = {
   TYPING: 'typing',
   CHAT_HISTORY: 'chat_history',
   SESSION_ASSIGNED: 'session_assigned',
+  CONNECTION_ESTABLISHED: 'connection_established',
   ERROR: 'error',
 };
 

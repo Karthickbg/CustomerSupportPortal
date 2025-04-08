@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useChat } from "@/hooks/useChat";
 import { ChatInterface } from "@/components/chat/ChatInterface";
 import { useQuery } from "@tanstack/react-query";
@@ -15,12 +15,16 @@ export default function CustomerChat() {
   const role = "customer";
   
   const [showInfo, setShowInfo] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [manualConnectAttempted, setManualConnectAttempted] = useState(false);
   
   // If user is logged in as an agent, redirect them to the agent interface
   if (user && user.role === "agent") {
     return <Redirect to="/agent" />;
   }
   
+  // We'll use autoConnect: false to prevent immediate connection attempts
+  // which might fail and show errors to the user
   const {
     connectionStatus,
     activeSession,
@@ -28,11 +32,31 @@ export default function CustomerChat() {
     sendMessage,
     isTyping,
     sendTypingIndicator,
+    connect,
   } = useChat({
     userId,
     role,
-    autoConnect: true,
+    autoConnect: false, // Don't connect automatically
   });
+  
+  // After page loads and renders, try to connect but don't show errors immediately
+  useEffect(() => {
+    if (!manualConnectAttempted) {
+      setIsConnecting(true);
+      // Delay the connection attempt slightly to ensure page has fully loaded
+      const timer = setTimeout(() => {
+        connect();
+        setManualConnectAttempted(true);
+        
+        // Wait a bit before showing any potential connection errors
+        setTimeout(() => {
+          setIsConnecting(false);
+        }, 2000);
+      }, 500);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [connect, manualConnectAttempted]);
   
   const { data: userData, isLoading } = useQuery({
     queryKey: [`/api/users/${userId}`],
@@ -88,7 +112,13 @@ export default function CustomerChat() {
         session={activeSession}
         messages={messages}
         isTyping={isTyping[activeSession?.id || 0] || false}
-        connectionStatus={connectionStatus}
+        connectionStatus={{
+          ...connectionStatus,
+          // Hide connection errors during initial connection attempt
+          connected: isConnecting ? true : connectionStatus.connected,
+          reconnecting: isConnecting ? false : connectionStatus.reconnecting,
+          error: isConnecting ? null : connectionStatus.error
+        }}
         userId={userId}
         onSendMessage={handleSendMessage}
         onTyping={handleTyping}

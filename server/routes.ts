@@ -7,6 +7,15 @@ import { publishMessage, subscribeToChannel } from "./redis";
 import { insertUserSchema, insertChatSessionSchema, insertMessageSchema, messageTypes } from "@shared/schema";
 import { handleConnection, processChatMessage, processTypingIndicator, assignSession, endChatSession, handleDisconnect } from "./chat";
 
+// Extend WebSocket type to include our custom properties
+interface ExtendedWebSocket extends WebSocket {
+  isAlive: boolean;
+  userData?: {
+    userId: number;
+    role: string;
+  };
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   // API Routes
   app.get("/api/health", (_req, res) => {
@@ -123,17 +132,85 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Create HTTP server
   const httpServer = createServer(app);
   
-  // Create WebSocket server
-  const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
+  // Create WebSocket server with more lenient settings
+  const wss = new WebSocketServer({ 
+    server: httpServer, 
+    path: '/ws',
+    // Increase ping timeout for intermittent connections
+    clientTracking: true,
+    // Allow more time for connections to initialize
+    perMessageDeflate: {
+      zlibDeflateOptions: {
+        // Use smaller chunks for better performance and less memory usage
+        chunkSize: 1024,
+        memLevel: 7,
+        level: 3
+      },
+      zlibInflateOptions: {
+        chunkSize: 10 * 1024
+      },
+      // Below options are needed for server-side performance
+      serverNoContextTakeover: true,
+      clientNoContextTakeover: true,
+      serverMaxWindowBits: 10,
+      concurrencyLimit: 10
+    }
+  });
+  
+  // Set up a heartbeat interval to keep connections alive
+  function heartbeat(this: any) {
+    this.isAlive = true;
+  }
+
+  const heartbeatInterval = setInterval(() => {
+    wss.clients.forEach((socket: WebSocket) => {
+      const extSocket = socket as ExtendedWebSocket;
+      if (extSocket.isAlive === false) {
+        // Get user info before closing connection
+        const userId = extSocket.userData?.userId;
+        if (userId) {
+          handleDisconnect(userId);
+        }
+        return socket.terminate();
+      }
+
+      extSocket.isAlive = false;
+      socket.ping();
+    });
+  }, 30000); // Check every 30 seconds
+
+  // Clean up interval on server close
+  wss.on('close', () => {
+    clearInterval(heartbeatInterval);
+  });
+  
+  // Log WebSocket server startup
+  console.log("WebSocket server initialized on path: /ws");
   
   // Handle WebSocket connections
-  wss.on('connection', (socket, request) => {
+  wss.on('connection', (socket: WebSocket, request) => {
+    // Cast to our extended type
+    const extSocket = socket as ExtendedWebSocket;
+    
+    // Initialize heartbeat
+    extSocket.isAlive = true;
+    
+    // Using Function.bind to fix 'this' context for the heartbeat function
+    extSocket.on('pong', heartbeat.bind(extSocket));
+    
     // Parse user ID and role from query string
     const url = new URL(request.url || '', `http://${request.headers.host}`);
     const userId = parseInt(url.searchParams.get('userId') || '0');
     const role = url.searchParams.get('role') || '';
     
+    // Store user data on the socket for later reference
+    extSocket.userData = { userId, role };
+    
+    // Log connection for debugging
+    console.log(`WebSocket connection established: User ${userId} (${role})`);
+    
     if (!userId || !['customer', 'agent'].includes(role)) {
+      console.log(`Invalid connection attempt: User ${userId} (${role})`);
       socket.send(JSON.stringify({
         type: messageTypes.ERROR,
         data: { message: "Invalid user ID or role" },
@@ -144,15 +221,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
     
     // Update user status to online
-    storage.updateUserStatus(userId, "online").catch(console.error);
+    storage.updateUserStatus(userId, "online").then(() => {
+      console.log(`User ${userId} (${role}) status updated to online`);
+    }).catch(err => {
+      console.error(`Failed to update status for user ${userId}:`, err);
+    });
     
     // Handle new connection
     handleConnection(socket, userId, role);
+    
+    // Send a welcome message to confirm connection
+    if (socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({
+        type: messageTypes.CONNECTION_ESTABLISHED,
+        data: { userId, role },
+        timestamp: Date.now(),
+      }));
+    }
     
     // Handle messages from client
     socket.on('message', async (data) => {
       try {
         const message = JSON.parse(data.toString());
+        
+        // Log message type for debugging
+        console.log(`Received message from User ${userId} (${role}): ${message.type}`);
         
         switch (message.type) {
           case messageTypes.CHAT_MESSAGE:
@@ -183,7 +276,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
     
     // Handle client disconnect
-    socket.on('close', () => {
+    socket.on('close', (code, reason) => {
+      console.log(`WebSocket connection closed for User ${userId} (${role}): Code ${code}, Reason: ${reason || 'No reason provided'}`);
       handleDisconnect(userId);
     });
   });

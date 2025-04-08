@@ -15,12 +15,19 @@ class WebSocketClient {
   private intentionalClose: boolean = false;
 
   /**
-   * Connect to the WebSocket server
+   * Connect to the WebSocket server with improved reliability
    */
   connect(userId: number, role: string): void {
     // Only attempt to connect if we're not already connecting or connected
     if (this.socket && (this.socket.readyState === WebSocket.OPEN || this.socket.readyState === WebSocket.CONNECTING)) {
+      console.log("Already connecting or connected, skipping new connection attempt");
       return;
+    }
+
+    // Cancel any pending reconnects
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
     }
 
     this.userId = userId;
@@ -38,16 +45,18 @@ class WebSocketClient {
     }
 
     try {
+      // Add timestamp to URL to avoid potential caching issues with WebSocket connections
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const wsUrl = `${protocol}//${window.location.host}/ws?userId=${userId}&role=${role}`;
+      const timestamp = Date.now();
+      const wsUrl = `${protocol}//${window.location.host}/ws?userId=${userId}&role=${role}&t=${timestamp}`;
       
       console.log(`Connecting to WebSocket at ${wsUrl}`);
       this.socket = new WebSocket(wsUrl);
 
-      // Add a connection timeout - if the connection doesn't establish within 8 seconds, try again
+      // Shorter timeout (5 seconds instead of 8) for faster retries
       const connectionTimeout = setTimeout(() => {
         if (this.socket && this.socket.readyState === WebSocket.CONNECTING) {
-          console.log("WebSocket connection timeout - retrying");
+          console.log("WebSocket connection timeout after 5 seconds - retrying");
           try {
             this.socket.close();
           } catch (e) {
@@ -57,12 +66,39 @@ class WebSocketClient {
           this.notifyConnectionHandlers(false);
           this.reconnect();
         }
-      }, 8000);
+      }, 5000);
 
       this.socket.addEventListener("open", () => {
         clearTimeout(connectionTimeout);
         this.handleOpen();
+        
+        // Set up regular pings to keep the connection alive
+        const pingInterval = setInterval(() => {
+          if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+            try {
+              // Send a lightweight ping message
+              this.socket.send(JSON.stringify({
+                type: "ping",
+                data: { timestamp: Date.now() },
+                timestamp: Date.now()
+              }));
+            } catch (e) {
+              console.error("Error sending ping:", e);
+              clearInterval(pingInterval);
+            }
+          } else {
+            clearInterval(pingInterval);
+          }
+        }, 25000); // Every 25 seconds
+        
+        // Make sure to clear the interval when the socket closes
+        if (this.socket) {
+          this.socket.addEventListener("close", () => {
+            clearInterval(pingInterval);
+          }, { once: true });
+        }
       });
+      
       this.socket.addEventListener("message", this.handleMessage);
       this.socket.addEventListener("close", this.handleClose);
       this.socket.addEventListener("error", (e) => {
