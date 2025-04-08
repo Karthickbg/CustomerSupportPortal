@@ -93,7 +93,7 @@ export function ChatInput({
         <Button 
           type="submit" 
           className="bg-primary text-white rounded-full w-10 h-10 flex items-center justify-center flex-shrink-0 hover:bg-blue-700 transition"
-          disabled={!message.trim() || disabled || !connectionStatus.connected}
+          disabled={!message.trim() || disabled}
         >
           <Send className="h-5 w-5" />
         </Button>

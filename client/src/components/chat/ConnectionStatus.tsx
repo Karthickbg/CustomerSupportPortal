@@ -13,22 +13,23 @@ export function ConnectionStatus({ status }: ConnectionStatusProps) {
   const [showError, setShowError] = useState(false);
   
   useEffect(() => {
-    // If connected, make sure we're not showing an error
-    if (status.connected) {
+    // For the customer interface, we don't want to block input even during connection issues
+    // Only show error if explicitly not connected and not in reconnecting state
+    if (status.connected || status.reconnecting) {
       setShowError(false);
       return;
     }
     
-    // If not connected, wait a bit before showing the error
+    // If we're completely disconnected with an error, show it after a delay
     // This prevents flashing during normal connection process
     const timer = setTimeout(() => {
-      if (!status.connected) {
+      if (!status.connected && !status.reconnecting) {
         setShowError(true);
       }
-    }, 2000); // 2 second delay
+    }, 5000); // 5 second delay - give more time to connect
     
     return () => clearTimeout(timer);
-  }, [status.connected]);
+  }, [status.connected, status.reconnecting]);
   
   // Don't show anything if connected or if we're still in the grace period
   if (status.connected || !showError) {
