@@ -128,10 +128,40 @@ export function useChat({ userId, role, autoConnect = true }: UseChatOptions): U
     } else if (role === 'agent') {
       // For agents, there are waiting and active sessions
       if (sessionData.waitingSessions) {
+        console.log(`Received ${sessionData.waitingSessions.length} waiting sessions`);
         setWaitingSessions(sessionData.waitingSessions);
       }
       
       if (sessionData.activeSessions) {
+        console.log(`Received ${sessionData.activeSessions.length} active sessions`);
+        
+        // Make sure we track all users involved in these sessions
+        sessionData.activeSessions.forEach((session: ChatSession) => {
+          // Track customer info for this session
+          if (session.customerId && !userDetails.current.has(session.customerId)) {
+            apiRequest('GET', `/api/users/${session.customerId}`)
+              .then(res => res.json())
+              .then(user => {
+                if (user && user.id) {
+                  userDetails.current.set(user.id, user);
+                }
+              })
+              .catch(err => console.error("Error fetching customer details:", err));
+          }
+          
+          // Track agent info for this session
+          if (session.agentId && !userDetails.current.has(session.agentId)) {
+            apiRequest('GET', `/api/users/${session.agentId}`)
+              .then(res => res.json())
+              .then(user => {
+                if (user && user.id) {
+                  userDetails.current.set(user.id, user);
+                }
+              })
+              .catch(err => console.error("Error fetching agent details:", err));
+          }
+        });
+        
         setActiveSessions(sessionData.activeSessions);
       }
     }
@@ -149,15 +179,22 @@ export function useChat({ userId, role, autoConnect = true }: UseChatOptions): U
     // For customer role, show messages in either:
     // 1. Their active session, or
     // 2. A session where they are the customer (even if not active yet)
-    // For agent role, show messages in active sessions they're assigned to
+    // For agent role:
+    // 1. Show messages in any active session they're viewing
+    // 2. Show messages if they're the assigned agent
+    // 3. Show all messages for all chats (agents can see all chat sessions)
     const shouldShowMessage = 
       (role === 'customer' && (
         activeSession?.id === session.id || 
         session.customerId === userId
       )) ||
       (role === 'agent' && (
-        session.agentId === userId || 
-        activeSession?.id === session.id
+        // Show if it's the active session being viewed
+        activeSession?.id === session.id ||
+        // Or if this agent is assigned to the session
+        session.agentId === userId ||
+        // Or if the message is for the active session
+        (activeSession && message && message.sessionId === activeSession.id)
       ));
       
     console.log("Processing chat message:", {
@@ -284,18 +321,29 @@ export function useChat({ userId, role, autoConnect = true }: UseChatOptions): U
     
     if (!session) return;
     
+    console.log("Processing session update:", {
+      sessionId: session.id,
+      status: session.status,
+      agentId: session.agentId,
+      customerId: session.customerId
+    });
+    
     if (role === 'customer') {
-      setActiveSession(session);
-      
-      if (session.agentId && !userDetails.current.has(session.agentId)) {
-        apiRequest('GET', `/api/users/${session.agentId}`)
-          .then(res => res.json())
-          .then(user => {
-            userDetails.current.set(user.id, user);
-          })
-          .catch(console.error);
+      // For customers, only update if this session is relevant to them
+      if (session.customerId === userId) {
+        setActiveSession(session);
+        
+        if (session.agentId && !userDetails.current.has(session.agentId)) {
+          apiRequest('GET', `/api/users/${session.agentId}`)
+            .then(res => res.json())
+            .then(user => {
+              userDetails.current.set(user.id, user);
+            })
+            .catch(console.error);
+        }
       }
     } else if (role === 'agent') {
+      // For agents, update all sessions in their lists
       if (session.status === 'waiting') {
         setWaitingSessions(prev => {
           const exists = prev.some(s => s.id === session.id);
@@ -306,8 +354,10 @@ export function useChat({ userId, role, autoConnect = true }: UseChatOptions): U
           }
         });
       } else if (session.status === 'active') {
+        // Remove from waiting list if it was there
         setWaitingSessions(prev => prev.filter(s => s.id !== session.id));
         
+        // Add to active list if not already there
         setActiveSessions(prev => {
           const exists = prev.some(s => s.id === session.id);
           if (exists) {
@@ -317,23 +367,40 @@ export function useChat({ userId, role, autoConnect = true }: UseChatOptions): U
           }
         });
         
+        // Fetch customer details if needed
         if (session.customerId && !userDetails.current.has(session.customerId)) {
           apiRequest('GET', `/api/users/${session.customerId}`)
             .then(res => res.json())
             .then(user => {
-              userDetails.current.set(user.id, user);
+              if (user && user.id) {
+                userDetails.current.set(user.id, user);
+              }
+            })
+            .catch(console.error);
+        }
+        
+        // Fetch agent details if needed
+        if (session.agentId && !userDetails.current.has(session.agentId)) {
+          apiRequest('GET', `/api/users/${session.agentId}`)
+            .then(res => res.json())
+            .then(user => {
+              if (user && user.id) {
+                userDetails.current.set(user.id, user);
+              }
             })
             .catch(console.error);
         }
       } else if (session.status === 'ended') {
+        // Remove from active list
         setActiveSessions(prev => prev.filter(s => s.id !== session.id));
         
+        // Clear active session if it was selected
         if (activeSession?.id === session.id) {
           setActiveSession(null);
         }
       }
     }
-  }, [role, activeSession]);
+  }, [role, userId, activeSession]);
   
   // Register WebSocket event handlers
   useEffect(() => {

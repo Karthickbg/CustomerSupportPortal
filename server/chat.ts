@@ -151,11 +151,13 @@ const handleCustomerConnection = async (userId: number, socket: WebSocket) => {
 // Handle when an agent connects
 const handleAgentConnection = async (userId: number, socket: WebSocket) => {
   try {
-    // Get waiting sessions
+    // Get waiting sessions (unassigned)
     const waitingSessions = await storage.getChatSessionsByStatus("waiting");
     
-    // Get active sessions for this agent
-    const activeSessions = await storage.getChatSessionsByAgentId(userId);
+    // Get ALL active sessions, not just this agent's
+    const activeSessions = await storage.getChatSessionsByStatus("active");
+    
+    console.log(`Agent ${userId} connected: Sending ${waitingSessions.length} waiting and ${activeSessions.length} active sessions`);
     
     // Send all sessions to the agent
     sendMessage(socket, {
@@ -167,8 +169,9 @@ const handleAgentConnection = async (userId: number, socket: WebSocket) => {
       timestamp: Date.now(),
     });
     
-    // Update memory with agent's sessions
-    activeSessions.forEach(session => {
+    // Update memory with agent's assigned sessions
+    const agentSessions = activeSessions.filter(session => session.agentId === userId);
+    agentSessions.forEach(session => {
       sessions.set(session.id, session);
       
       if (!userSessions.has(userId)) {
@@ -237,15 +240,20 @@ export const processChatMessage = async (userId: number, message: WebSocketMessa
       // The message will still be delivered via direct WebSocket
     }
     
-    // Send to both participants
-    sendToSessionParticipants(sessionId, {
+    // Send to both participants and broadcast to all agents
+    const messageEvent = {
       type: messageTypes.CHAT_MESSAGE,
       data: {
         message: storedMessage,
         session,
       },
       timestamp: Date.now(),
-    });
+    };
+    
+    sendToSessionParticipants(sessionId, messageEvent);
+    
+    // Also broadcast to all other agents (for visibility into all chats)
+    broadcastToAgents(messageEvent);
     
     return storedMessage;
   } catch (error) {
@@ -310,12 +318,18 @@ export const assignSession = async (agentId: number, sessionId: number) => {
       userSessions.get(agentId)?.push(sessionId);
     }
     
-    // Notify both agent and customer
-    sendToSessionParticipants(sessionId, {
+    // Create the session assigned event
+    const sessionEvent = {
       type: messageTypes.SESSION_ASSIGNED,
       data: { session: updatedSession },
       timestamp: Date.now(),
-    });
+    };
+    
+    // Notify both agent and customer
+    sendToSessionParticipants(sessionId, sessionEvent);
+    
+    // Also broadcast to all other agents (for visibility into all chats)
+    broadcastToAgents(sessionEvent);
     
     return updatedSession;
   } catch (error) {
@@ -335,12 +349,18 @@ export const endChatSession = async (sessionId: number) => {
     
     sessions.set(sessionId, updatedSession);
     
-    // Notify both agent and customer
-    sendToSessionParticipants(sessionId, {
+    // Create the session ended event
+    const sessionEvent = {
       type: messageTypes.SESSION_ASSIGNED,
       data: { session: updatedSession },
       timestamp: Date.now(),
-    });
+    };
+    
+    // Notify both agent and customer
+    sendToSessionParticipants(sessionId, sessionEvent);
+    
+    // Also broadcast to all other agents (for visibility into all chats)
+    broadcastToAgents(sessionEvent);
     
     return updatedSession;
   } catch (error) {
@@ -359,11 +379,25 @@ export const handleDisconnect = (userId: number) => {
   });
 };
 
-// Send a message to all agents
+// Send a message to all agents except the one already receiving it in the session
 const broadcastToAgents = (message: WebSocketMessage) => {
+  // Skip if this is not a session-related message
+  if (!message.data || !message.data.session) {
+    return;
+  }
+  
+  const session = message.data.session;
+  const assignedAgentId = session.agentId;
+  
   // Convert map entries to array to avoid downlevelIteration issue
   Array.from(connections.entries()).forEach(([userId, connection]) => {
-    if (connection.role === "agent" && connection.socket.readyState === WebSocket.OPEN) {
+    // Only send to:
+    // 1. Agents
+    // 2. With open connections
+    // 3. Who are not the assigned agent (to avoid duplicates)
+    if (connection.role === "agent" && 
+        connection.socket.readyState === WebSocket.OPEN &&
+        userId !== assignedAgentId) {
       sendMessage(connection.socket, message);
     }
   });
