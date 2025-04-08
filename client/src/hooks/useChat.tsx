@@ -158,10 +158,23 @@ export function useChat({ userId, role, autoConnect = true }: UseChatOptions): U
     }
     
     // Add message to the list
+    console.log("Processing chat message:", {
+      messageId: message?.id,
+      senderId: message?.senderId,
+      sessionId: session?.id,
+      role,
+      userId,
+      activeSessionId: activeSession?.id,
+      agentId: session?.agentId,
+      showCondition: message && session && (
+        (role === 'customer' && session.customerId === userId) ||
+        (role === 'agent' && (session.agentId === userId || activeSession?.id === session.id))
+      )
+    });
+    
     if (message && session && (
         (role === 'customer' && session.customerId === userId) ||
-        (role === 'agent' && session.agentId === userId) ||
-        (role === 'agent' && !session.agentId && activeSession?.id === session.id)
+        (role === 'agent' && (session.agentId === userId || activeSession?.id === session.id))
     )) {
       setMessages(prev => [
         ...prev, 
@@ -346,6 +359,13 @@ export function useChat({ userId, role, autoConnect = true }: UseChatOptions): U
     const session = 
       waitingSessions.find(s => s.id === sessionId) ||
       activeSessions.find(s => s.id === sessionId);
+    
+    console.log("Selecting active session:", { 
+      sessionId, 
+      foundSession: session ? true : false, 
+      waitingSessionsCount: waitingSessions.length,
+      activeSessionsCount: activeSessions.length 
+    });
     
     if (session) {
       setActiveSession(session);

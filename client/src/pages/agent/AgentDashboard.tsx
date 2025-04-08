@@ -49,12 +49,20 @@ export default function AgentDashboard() {
   };
   
   const handleSelectSession = async (sessionId: number) => {
+    console.log("Agent selecting session:", { 
+      sessionId, 
+      userId, 
+      waitingSessions: waitingSessions.map(s => s.id),
+      activeSessions: activeSessions.map(s => s.id)
+    });
+    
     // Set the active session
     setActiveSession(sessionId);
     
     // If session is from the waiting queue, assign it to this agent
     const isWaiting = waitingSessions.some(s => s.id === sessionId);
     if (isWaiting) {
+      console.log("Assigning waiting session to agent:", { sessionId, agentId: userId });
       await assignSession(sessionId);
     }
     
