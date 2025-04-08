@@ -9,34 +9,23 @@ import { Redirect } from "wouter";
 export default function CustomerChat() {
   const { user } = useAuth();
   
-  // For anonymous customers, check if we have a stored ID from a previous session
-  let initialUserId = user?.id || 0; 
-  
-  // Try to use a stored temporary ID for reconnection if we're not logged in
-  if (!user) {
-    const storedId = localStorage.getItem('anonymousCustomerId');
-    if (storedId) {
-      const parsedId = parseInt(storedId, 10);
-      if (!isNaN(parsedId) && parsedId < 0) {
-        initialUserId = parsedId;
-        console.log(`Using stored anonymous ID: ${initialUserId} for connection`);
-      }
-    }
-  }
-  
-  const userId = initialUserId;
+  // Allow anonymous customer access (userId will be assigned temporarily by the server)
+  // If user is logged in, we'll use their ID
+  // We'll pass 0 when not authenticated, and server will assign a temporary ID
+  const userId = user?.id || 0; 
   const role = "customer";
   
   const [showInfo, setShowInfo] = useState(false);
-  const [isConnecting, setIsConnecting] = useState(true); // Start as connecting
-  const [forceReconnect, setForceReconnect] = useState(0); // Counter to force reconnection
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [manualConnectAttempted, setManualConnectAttempted] = useState(false);
   
   // If user is logged in as an agent, redirect them to the agent interface
   if (user && user.role === "agent") {
     return <Redirect to="/agent" />;
   }
   
-  // Always use autoConnect: true for customer interface for reliability
+  // We'll use autoConnect: false to prevent immediate connection attempts
+  // which might fail and show errors to the user
   const {
     connectionStatus,
     activeSession,
@@ -48,34 +37,36 @@ export default function CustomerChat() {
   } = useChat({
     userId,
     role,
-    autoConnect: true, // Always connect automatically
+    autoConnect: false, // Don't connect automatically
   });
   
-  // Log connection status and reconnect if needed
+  // After page loads and renders, try to connect but don't show errors immediately
   useEffect(() => {
-    console.log("Customer chat connection status:", {
-      connected: connectionStatus.connected,
-      reconnecting: connectionStatus.reconnecting,
-      error: connectionStatus.error,
-      hasActiveSession: activeSession !== null
-    });
-    
-    // If connection is lost, and we have no active session, try to reconnect
-    if (!connectionStatus.connected && !connectionStatus.reconnecting && !activeSession) {
-      // We'll wait 3 seconds between reconnection attempts
-      const reconnectTimer = setTimeout(() => {
-        console.log("Attempting to reconnect customer chat...");
-        connect();
-        setForceReconnect(prev => prev + 1); // Increment to force effect to run again
-      }, 3000);
+    if (!manualConnectAttempted) {
+      setIsConnecting(true);
       
-      return () => clearTimeout(reconnectTimer);
+      // Delay the connection attempt slightly to ensure page has fully loaded
+      const timer = setTimeout(() => {
+        try {
+          // Try to connect to the websocket server
+          console.log("Attempting customer chat WebSocket connection...");
+          connect();
+          console.log("Connection attempt initiated");
+        } catch (error) {
+          console.error("Error during connection attempt:", error);
+        }
+        
+        setManualConnectAttempted(true);
+        
+        // Wait a bit before showing any potential connection errors
+        setTimeout(() => {
+          setIsConnecting(false);
+        }, 2000);
+      }, 500);
+      
+      return () => clearTimeout(timer);
     }
-    
-    // Update connection state for UI
-    setIsConnecting(!connectionStatus.connected);
-    
-  }, [connectionStatus, connect, activeSession, forceReconnect]);
+  }, [connect, manualConnectAttempted]);
   
   const { data: userData, isLoading } = useQuery({
     queryKey: [`/api/users/${userId}`],

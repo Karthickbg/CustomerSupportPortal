@@ -75,8 +75,6 @@ export const messageTypes = {
   SESSION_ASSIGNED: 'session_assigned',
   CONNECTION_ESTABLISHED: 'connection_established',
   ERROR: 'error',
-  PING: 'ping',
-  PONG: 'pong',
 };
 
 export type WebSocketMessage = {

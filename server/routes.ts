@@ -188,7 +188,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   console.log("WebSocket server initialized on path: /ws");
   
   // Handle WebSocket connections
-  wss.on('connection', async (socket: WebSocket, request) => {
+  wss.on('connection', (socket: WebSocket, request) => {
     // Cast to our extended type
     const extSocket = socket as ExtendedWebSocket;
     
@@ -203,8 +203,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     let userId = parseInt(url.searchParams.get('userId') || '0');
     const role = url.searchParams.get('role') || '';
     
-    // Log initial connection parameters
-    console.log(`WebSocket connection request from role: ${role}, userId: ${userId}`);
+    // Store user data on the socket for later reference
+    extSocket.userData = { userId, role };
+    
+    // Log connection for debugging
+    console.log(`WebSocket connection established: User ${userId} (${role})`);
     
     // Only validate agent connections - customers can connect without authentication
     if (role === 'agent' && !userId) {
@@ -230,35 +233,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return;
     }
     
-    // Handle anonymous customers and reconnection attempts
-    if (role === 'customer') {
-      // Check if a negative ID is being sent, indicating a reconnection attempt
-      if (userId < 0) {
-        // Check if this customer ID has any existing sessions
-        const existingSessions = await storage.getChatSessionsByCustomerId(userId);
-        
-        if (existingSessions.length > 0) {
-          console.log(`Reconnecting customer with existing temporary ID: ${userId}`);
-          // Keep the existing ID for session continuity
-        } else {
-          // ID doesn't exist in our system, assign a new one
-          const tempId = -(Date.now() % 100000);
-          console.log(`No existing session found for ID ${userId}, assigning new ID: ${tempId}`);
-          userId = tempId;
-        }
-      } else if (userId === 0) {
-        // New anonymous customer, assign a temporary negative ID
-        const tempId = -(Date.now() % 100000);
-        console.log(`Assigning temporary ID ${tempId} to anonymous customer`);
-        userId = tempId;
-      }
+    // For customers without a userId, assign a temporary anonymous ID
+    if (role === 'customer' && !userId) {
+      // Generate a temporary negative ID for anonymous users
+      const tempId = -(Date.now() % 100000);
+      console.log(`Assigning temporary ID ${tempId} to anonymous customer`);
+      userId = tempId;
+      extSocket.userData = { userId, role };
     }
-    
-    // Store the final user data on the socket for reference
-    extSocket.userData = { userId, role };
-    
-    // Log successful connection with the final userId
-    console.log(`WebSocket connection established: User ${userId} (${role})`);
     
     // Update user status to online
     storage.updateUserStatus(userId, "online").then(() => {
@@ -298,14 +280,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
             if (role === 'agent') {
               await assignSession(userId, message.data.sessionId);
             }
-            break;
-          case messageTypes.PING:
-            // Handle ping message by sending a pong response to keep connection alive
-            socket.send(JSON.stringify({
-              type: messageTypes.PONG,
-              data: { timestamp: Date.now() },
-              timestamp: Date.now()
-            }));
             break;
           default:
             console.log("Received unknown message type:", message.type);

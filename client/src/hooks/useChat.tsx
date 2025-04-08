@@ -116,36 +116,14 @@ export function useChat({ userId, role, autoConnect = true }: UseChatOptions): U
   
   // Process chat history
   const processChatHistory = useCallback((sessionData: any) => {
-    console.log("Processing chat history:", sessionData);
-    
     if (role === 'customer') {
       // For customers, there's only one active session
       if (sessionData.session && sessionData.messages) {
-        console.log("Customer received session data:", sessionData.session.id);
         setActiveSession(sessionData.session);
         setMessages(sessionData.messages.map((msg: Message) => ({
           ...msg,
           user: userDetails.current.get(msg.senderId)
         })));
-      } else if (sessionData.activeSessions && sessionData.activeSessions.length > 0) {
-        // Special case: If we somehow received an agent-style response for a customer
-        // (this can happen when switching between roles)
-        const latestSession = sessionData.activeSessions[0];
-        console.log("Customer using agent-style session data:", latestSession.id);
-        setActiveSession(latestSession);
-        
-        // Try to load messages for this session
-        apiRequest('GET', `/api/chat-sessions/${latestSession.id}/messages`)
-          .then(res => res.json())
-          .then(messages => {
-            setMessages(messages.map((msg: Message) => ({
-              ...msg,
-              user: userDetails.current.get(msg.senderId)
-            })));
-          })
-          .catch(error => {
-            console.error("Error loading messages:", error);
-          });
       }
     } else if (role === 'agent') {
       // For agents, there are waiting and active sessions
@@ -352,48 +330,16 @@ export function useChat({ userId, role, autoConnect = true }: UseChatOptions): U
     
     if (role === 'customer') {
       // For customers, only update if this session is relevant to them
-      // For anonymous customers with temporary IDs, userId could be 0 initially
-      // so we check for exact match OR if customer ID is negative and user ID is 0
-      const isRelevantToCustomer = 
-        session.customerId === userId ||
-        (session.customerId < 0 && userId === 0);
-      
-      console.log("Customer session relevance check:", {
-        sessionCustomerId: session.customerId,
-        userId,
-        isRelevant: isRelevantToCustomer
-      });
-      
-      if (isRelevantToCustomer) {
-        console.log("Setting active session for customer to:", session.id);
+      if (session.customerId === userId) {
         setActiveSession(session);
         
-        // If we have an agent ID, let's fetch the agent details
         if (session.agentId && !userDetails.current.has(session.agentId)) {
           apiRequest('GET', `/api/users/${session.agentId}`)
             .then(res => res.json())
             .then(user => {
               userDetails.current.set(user.id, user);
-              console.log("Added agent to userDetails:", user.id);
             })
-            .catch(err => console.error("Error fetching agent details:", err));
-        }
-        
-        // Load messages for this session if it's being assigned and we don't have messages
-        if (session.status === 'active' && messages.length === 0) {
-          console.log("Loading messages for newly assigned session:", session.id);
-          apiRequest('GET', `/api/chat-sessions/${session.id}/messages`)
-            .then(res => res.json())
-            .then(sessionMessages => {
-              if (sessionMessages && sessionMessages.length) {
-                console.log(`Loaded ${sessionMessages.length} messages for session ${session.id}`);
-                setMessages(sessionMessages.map((msg: Message) => ({
-                  ...msg,
-                  user: userDetails.current.get(msg.senderId)
-                })));
-              }
-            })
-            .catch(err => console.error("Error loading messages for assigned session:", err));
+            .catch(console.error);
         }
       }
     } else if (role === 'agent') {
@@ -454,7 +400,7 @@ export function useChat({ userId, role, autoConnect = true }: UseChatOptions): U
         }
       }
     }
-  }, [role, userId, activeSession, messages.length]);
+  }, [role, userId, activeSession]);
   
   // Register WebSocket event handlers
   useEffect(() => {
