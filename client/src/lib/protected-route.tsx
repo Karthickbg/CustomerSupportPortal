@@ -17,7 +17,7 @@ export function ProtectedRoute({ path, children }: ProtectedRouteProps) {
         <div className="flex items-center justify-center min-h-screen">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
         </div>
-      ) : user ? (
+      ) : user && user.role === 'agent' ? (
         children
       ) : (
         <Redirect to="/auth" />

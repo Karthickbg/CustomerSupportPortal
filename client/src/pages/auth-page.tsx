@@ -16,10 +16,10 @@ export default function AuthPage() {
   const { toast } = useToast();
   const [, navigate] = useLocation();
 
-  // If user is already logged in, redirect to dashboard
+  // If user is already logged in as an agent, redirect to agent dashboard
   useEffect(() => {
-    if (user) {
-      navigate("/");
+    if (user && user.role === 'agent') {
+      navigate("/agent");
     }
   }, [user, navigate]);
 
@@ -38,7 +38,7 @@ export default function AuthPage() {
     if (tab === "login") {
       const success = await login(username, password);
       if (success) {
-        navigate("/");
+        navigate("/agent");
       }
     } else {
       toast({
@@ -49,8 +49,8 @@ export default function AuthPage() {
     }
   };
 
-  if (user) {
-    return <Redirect to="/" />;
+  if (user && user.role === 'agent') {
+    return <Redirect to="/agent" />;
   }
 
   return (
