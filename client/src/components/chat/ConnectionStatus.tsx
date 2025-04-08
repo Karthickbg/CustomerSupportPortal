@@ -9,31 +9,59 @@ interface ConnectionStatusProps {
 }
 
 export function ConnectionStatus({ status }: ConnectionStatusProps) {
-  // Only show connection error after a delay to avoid flashing during normal connection establishment
-  const [showError, setShowError] = useState(false);
+  // Only show connection status alerts after a delay to avoid flashing during normal connection establishment
+  const [showAlert, setShowAlert] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
   
   useEffect(() => {
-    // For the customer interface, we don't want to block input even during connection issues
-    // Only show error if explicitly not connected and not in reconnecting state
-    if (status.connected || status.reconnecting) {
-      setShowError(false);
+    // Show a success message briefly when we connect
+    if (status.connected) {
+      setShowSuccess(true);
+      // Auto-hide success message after 3 seconds
+      const successTimer = setTimeout(() => {
+        setShowSuccess(false);
+      }, 3000);
+      
+      return () => clearTimeout(successTimer);
+    }
+    
+    // Show an error message if we're disconnected for too long
+    if (!status.connected && !status.reconnecting) {
+      // Only show error after a delay to avoid flashing during normal reconnection
+      const errorTimer = setTimeout(() => {
+        if (!status.connected && !status.reconnecting) {
+          setShowAlert(true);
+        }
+      }, 5000); // 5 second delay before showing connection error
+      
+      return () => clearTimeout(errorTimer);
+    }
+    
+    // Show reconnecting status if we're actively trying to reconnect
+    if (status.reconnecting) {
+      setShowAlert(true);
       return;
     }
     
-    // If we're completely disconnected with an error, show it after a delay
-    // This prevents flashing during normal connection process
-    const timer = setTimeout(() => {
-      if (!status.connected && !status.reconnecting) {
-        setShowError(true);
-      }
-    }, 5000); // 5 second delay - give more time to connect
-    
-    return () => clearTimeout(timer);
+    // Otherwise hide all alerts
+    setShowAlert(false);
   }, [status.connected, status.reconnecting]);
   
-  // Don't show anything if connected or if we're still in the grace period
-  if (status.connected || !showError) {
+  // Don't show anything if we're not in an alert state
+  if (!showAlert && !showSuccess) {
     return null;
+  }
+  
+  // Show connection success briefly
+  if (showSuccess && status.connected) {
+    return (
+      <Alert className="mb-3 px-3 py-2 rounded-md text-sm bg-green-50 text-green-800 border-green-200">
+        <div className="flex items-center space-x-2">
+          <div className="h-2 w-2 rounded-full bg-green-500"></div>
+          <AlertTitle className="text-sm font-medium">Connected to support</AlertTitle>
+        </div>
+      </Alert>
+    );
   }
 
   // Show a more user-friendly message for customers

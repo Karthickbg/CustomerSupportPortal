@@ -123,10 +123,11 @@ export default function CustomerChat() {
         messages={messages}
         isTyping={isTyping[activeSession?.id || 0] || false}
         connectionStatus={{
-          // Allow chat input even when initially connecting or reconnecting
-          connected: true, // Always show as connected to enable input
-          reconnecting: false, 
-          error: null
+          // Always pass the actual connection status for proper notifications
+          // but never disable the input based on connection (ChatInput handles this separately)
+          connected: connectionStatus.connected,
+          reconnecting: connectionStatus.reconnecting, 
+          error: connectionStatus.error
         }}
         userId={userId}
         onSendMessage={handleSendMessage}
